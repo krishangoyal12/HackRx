@@ -10,11 +10,11 @@ from transformers import AutoTokenizer
 
 # --- Configuration Constants ---
 DOCUMENTS_DIR = "policy_documents"
-QDRANT_HOST = "localhost"
-QDRANT_PORT = 6333
+QDRANT_URL = "https://83ed5164-6c0e-4f45-96b4-59b1e3d8da6e.us-west-1-0.aws.cloud.qdrant.io:6333"
+QDRANT_API_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhY2Nlc3MiOiJtIn0.JChstIYh84XPCmoM398eBL5thfx2WsoQM0WpLKwP_nA"
 COLLECTION_NAME = "policy_documents"
 EMBEDDING_MODEL_NAME = "sentence-transformers/all-mpnet-base-v2"  # More powerful model
-VECTOR_SIZE = 384  # For all-mpnet-base-v2
+VECTOR_SIZE = 768  # Corrected for all-mpnet-base-v2
 
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 folder_path = os.path.join(BASE_DIR, DOCUMENTS_DIR)
@@ -57,7 +57,7 @@ def chunk_documents(documents):
     print("Chunking documents...")
     
     text_splitter = RecursiveCharacterTextSplitter(
-        chunk_size=800,  # Smaller chunks for better handling of policies
+        chunk_size=400,  # Smaller chunks for better handling of policies
         chunk_overlap=200,  # Overlap for better continuity
         length_function=lambda text: len(tokenizer.encode(text, truncation=False)),
         add_start_index=True
@@ -87,7 +87,10 @@ def main():
     # Step 3: Initialize embedding model and Qdrant client
     print("Initializing embedding model and Qdrant client...")
     embedding_model = SentenceTransformer(EMBEDDING_MODEL_NAME)
-    qdrant_client = QdrantClient(host=QDRANT_HOST, port=QDRANT_PORT)
+    qdrant_client = QdrantClient(
+        url=QDRANT_URL, 
+        api_key=QDRANT_API_KEY
+    )
     print("Initialization complete.")
 
     # Step 4: Check if collection exists before creating
