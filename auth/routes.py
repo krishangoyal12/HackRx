@@ -87,9 +87,19 @@ def signup():
         conn.commit()
         cur.close()
         conn.close()
+        
+        # Generate JWT token upon signup
+        payload = {
+            "id": user_id,
+            "username": username,
+            "email": email,
+            "exp": datetime.datetime.utcnow() + datetime.timedelta(seconds=JWT_EXPIRES)
+        }
+        token = jwt.encode(payload, JWT_SECRET, algorithm="HS256")
 
         return jsonify({
             "message": "Signup successful!",
+            "token": token,
             "user": {"id": user_id, "username": username, "email": email}
         }), 201
 
