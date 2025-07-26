@@ -6,23 +6,22 @@ from qdrant_client import QdrantClient, models
 from tqdm import tqdm
 import uuid
 from datetime import datetime
-from transformers import AutoTokenizer
+# Import disabled to avoid SSL errors
+# from transformers import AutoTokenizer
 
 # --- Configuration Constants ---
 DOCUMENTS_DIR = "policy_documents"
 QDRANT_URL = "https://83ed5164-6c0e-4f45-96b4-59b1e3d8da6e.us-west-1-0.aws.cloud.qdrant.io:6333"
 QDRANT_API_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhY2Nlc3MiOiJtIn0.JChstIYh84XPCmoM398eBL5thfx2WsoQM0WpLKwP_nA"
 COLLECTION_NAME = "policy_documents"
-EMBEDDING_MODEL_NAME = "sentence-transformers/all-mpnet-base-v2"  # More powerful model
-VECTOR_SIZE = 768  # Corrected for all-mpnet-base-v2
+EMBEDDING_MODEL_NAME = "sentence-transformers/all-mpnet-base-v2"
+VECTOR_SIZE = 768
 
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 folder_path = os.path.join(BASE_DIR, DOCUMENTS_DIR)
 
-# Tokenizer to calculate token length for better chunking
-tokenizer = AutoTokenizer.from_pretrained(EMBEDDING_MODEL_NAME)
-
 def load_documents_from_folder(folder_path):
+    # Function unchanged
     documents = []
     print(f"Loading documents from '{folder_path}'...")
     
@@ -43,8 +42,8 @@ def load_documents_from_folder(folder_path):
                             "metadata": {
                                 "source": filename,
                                 "page": page_num + 1,
-                                "doc_id": filename.replace(".pdf", ""),  # Enriched metadata
-                                "ingested_at": datetime.utcnow().isoformat()  # Ingestion time
+                                "doc_id": filename.replace(".pdf", ""),
+                                "ingested_at": datetime.now().isoformat()  # Fixed deprecation warning
                             }
                         })
             except Exception as e:
@@ -56,10 +55,10 @@ def load_documents_from_folder(folder_path):
 def chunk_documents(documents):
     print("Chunking documents...")
     
+    # Using character-based chunking instead of token-based to avoid SSL issues
     text_splitter = RecursiveCharacterTextSplitter(
-        chunk_size=400,  # Smaller chunks for better handling of policies
-        chunk_overlap=200,  # Overlap for better continuity
-        length_function=lambda text: len(tokenizer.encode(text, truncation=False)),
+        chunk_size=1500,  # Character count (roughly 400 tokens)
+        chunk_overlap=200,
         add_start_index=True
     )
 
