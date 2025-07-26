@@ -13,13 +13,24 @@ auth = Blueprint('auth', __name__)
 JWT_SECRET = os.getenv("JWT_SECRET")
 JWT_EXPIRES = int(os.getenv("JWT_EXPIRES", 3600))  # default 1 hour
 
+# def get_db_connection():
+#     return psycopg2.connect(
+#         host=os.getenv("DB_HOST"),
+#         port=os.getenv("DB_PORT"),
+#         database=os.getenv("DB_NAME"),
+#         user=os.getenv("DB_USER"),
+#         password=os.getenv("DB_PASSWORD")
+#     )
+
+
 def get_db_connection():
     return psycopg2.connect(
-        host=os.getenv("DB_HOST"),
-        port=os.getenv("DB_PORT"),
-        database=os.getenv("DB_NAME"),
-        user=os.getenv("DB_USER"),
-        password=os.getenv("DB_PASSWORD")
+        host=os.getenv("PGHOST"),
+        database=os.getenv("PGDATABASE"),
+        user=os.getenv("PGUSER"),
+        password=os.getenv("PGPASSWORD"),
+        port=5432,
+        sslmode=os.getenv("PGSSLMODE")
     )
 
 # Middleware to protect routes
@@ -134,12 +145,12 @@ def get_users():
     try:
         conn = get_db_connection()
         cur = conn.cursor()
-        cur.execute("SELECT id, username, email FROM users")
+        cur.execute("SELECT id, username, email, password FROM users")
         users = cur.fetchall()
         cur.close()
         conn.close()
 
-        user_list = [{"id": u[0], "username": u[1], "email": u[2]} for u in users]
+        user_list = [{"id": u[0], "username": u[1], "email": u[2], "password": u[3]} for u in users]
         return jsonify(user_list), 200
 
     except psycopg2.Error as e:

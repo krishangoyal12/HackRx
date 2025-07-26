@@ -1,6 +1,6 @@
 from flask import Flask
 from dotenv import load_dotenv
-from auth.routes import auth
+from auth.routes import auth, get_db_connection 
 import os
 
 load_dotenv()
@@ -17,3 +17,12 @@ def home():
 
 if __name__ == '__main__':
     app.run(debug=True)
+
+    # Test DB connection before starting server
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT version();")
+    print(cur.fetchone())
+    cur.close()
+    conn.close()
+
