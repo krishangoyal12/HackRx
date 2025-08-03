@@ -6,6 +6,9 @@ import os
 import time
 from retrieval import search_documents
 from llm_handler import generate_response  # Import the new LLM handler
+import sys
+
+print("Python version:", sys.version)
 
 load_dotenv()
 
