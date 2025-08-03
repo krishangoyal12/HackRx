@@ -1,6 +1,7 @@
 import os
 import sys
 import fitz  # PyMuPDF
+import re
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from sentence_transformers import SentenceTransformer
 from qdrant_client import QdrantClient, models
@@ -18,26 +19,43 @@ QDRANT_URL = os.getenv("QDRANT_URL")
 QDRANT_API_KEY = os.getenv("QDRANT_API_KEY")
 COLLECTION_NAME = "policy_documents"
 EMBEDDING_MODEL_NAME = "sentence-transformers/all-mpnet-base-v2"
-VECTOR_SIZE = 768
+VECTOR_SIZE = 768 # Correct size for all-mpnet-base-v2
 
 # --- Setup base directory ---
-BASE_DIR = os.path.abspath(os.path.dirname(__file__))
+# This makes the script runnable from any location
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 folder_path = os.path.join(BASE_DIR, DOCUMENTS_DIR)
 
+def clean_text(text):
+    """
+    Cleans the extracted PDF text by removing headers, footers, page numbers,
+    and correcting common formatting issues.
+    """
+    # 1. Remove headers and footers (adjust regex patterns as needed for your specific documents)
+    # This example removes lines that look like "Policy Wording Page X of Y"
+    text = re.sub(r'(?i)policy wording(s)?\s*page\s*\d+\s*of\s*\d+', '', text, flags=re.IGNORECASE)
+    # This example removes lines that are just numbers (likely page numbers)
+    text = re.sub(r'^\s*\d+\s*$', '', text, flags=re.MULTILINE)
+
+    # 2. Correct words broken by hyphens at line breaks
+    text = re.sub(r'(\w+)-\n(\w+)', r'\1\2', text)
+
+    # 3. Remove multiple newlines and replace with a single space
+    text = re.sub(r'\n+', ' ', text)
+
+    # 4. Remove excessive whitespace
+    text = re.sub(r'\s+', ' ', text).strip()
+    
+    return text
+
 def load_documents_from_folder(path):
-    """Loads PDF documents from a specified folder, creating it if it doesn't exist."""
+    """Loads PDF documents from a specified folder, cleans them, and extracts text."""
     documents = []
     print(f"Loading documents from '{path}'...")
 
     if not os.path.isdir(path):
-        print(f"Directory not found at '{path}'. Creating it...")
-        try:
-            os.makedirs(path)
-            print(f"Created directory. Please add PDF documents to '{path}' and run again.")
-            return []
-        except Exception as e:
-            print(f"Error: Failed to create directory: {e}")
-            return []
+        print(f"Directory not found at '{path}'. Please ensure it exists.")
+        return []
 
     pdf_files = [f for f in os.listdir(path) if f.endswith(".pdf")]
     if not pdf_files:
@@ -51,8 +69,10 @@ def load_documents_from_folder(path):
             for page_num, page in enumerate(doc):
                 text = page.get_text()
                 if text:
+                    # ** NEW STEP: Clean the text before adding it **
+                    cleaned_text = clean_text(text)
                     documents.append({
-                        "text": text,
+                        "text": cleaned_text,
                         "metadata": {
                             "source": filename,
                             "page": page_num + 1,
@@ -70,14 +90,15 @@ def chunk_documents(documents):
     """Splits documents into smaller, manageable chunks."""
     print("Chunking documents...")
     text_splitter = RecursiveCharacterTextSplitter(
-        chunk_size=1500,
-        chunk_overlap=200,
+        chunk_size=750,   # Reduced for more focused chunks
+        chunk_overlap=150, # Adjusted overlap
         add_start_index=True
     )
 
     all_chunks = []
     for doc in tqdm(documents, desc="Chunking Pages"):
         metadata = doc["metadata"]
+        # The splitter works on the text content
         chunks = text_splitter.create_documents([doc["text"]], metadatas=[metadata])
         for i, chunk in enumerate(chunks):
             chunk.metadata["chunk_index"] = i
@@ -132,14 +153,14 @@ def main():
             )
             print(f"Collection '{COLLECTION_NAME}' created successfully.")
         else:
-            print(f"Collection '{COLLECTION_NAME}' already exists. Skipping recreation.")
+            print(f"Collection '{COLLECTION_NAME}' already exists. Re-populating...")
     except Exception as e:
         print(f"Error managing collection: {e}")
         return
 
     # Step 5: Batch embed and upsert into Qdrant
     print("Generating embeddings and storing in Qdrant...")
-    batch_size = 64  # Smaller batch size for more reliable cloud uploads
+    batch_size = 64
     failed_batches = 0
 
     for i in tqdm(range(0, len(chunked_documents), batch_size), desc="Upserting to Qdrant"):
@@ -177,8 +198,6 @@ def main():
         print(f"Total points in collection '{COLLECTION_NAME}': {collection_info.points_count}")
     except Exception as e:
         print(f"\nCould not retrieve final collection info: {e}")
-        print("This might be due to a client/server version mismatch.")
-        print("Try upgrading your client: pip install --upgrade qdrant-client")
     print("==================================================")
 
 if __name__ == "__main__":
