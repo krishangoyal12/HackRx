@@ -74,13 +74,14 @@ def hackrx_run():
         }), 500
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    port = int(os.environ.get('PORT', 5000))
+    app.run(host='0.0.0.0', port=port)
 
     # Test DB connection before starting server
-    conn = get_db_connection()
-    cur = conn.cursor()
-    cur.execute("SELECT version();")
-    print(cur.fetchone())
-    cur.close()
-    conn.close()
+    # conn = get_db_connection()
+    # cur = conn.cursor()
+    # cur.execute("SELECT version();")
+    # print(cur.fetchone())
+    # cur.close()
+    # conn.close()
 

@@ -3,14 +3,25 @@ import time
 from dotenv import load_dotenv
 import google.generativeai as genai
 
+_genai_initialized = False
+
 load_dotenv()
 
 # Get API key from environment variables
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
-# Initialize Gemini
-if GEMINI_API_KEY:
-    genai.configure(api_key=GEMINI_API_KEY)
+# REMOVED immediate initialization
+# if GEMINI_API_KEY:
+#     genai.configure(api_key=GEMINI_API_KEY)
+
+def ensure_genai_initialized():
+    """Lazy initialization of Gemini API to save memory at startup"""
+    global _genai_initialized
+    if not _genai_initialized and GEMINI_API_KEY:
+        genai.configure(api_key=GEMINI_API_KEY)
+        _genai_initialized = True
+        return True
+    return bool(GEMINI_API_KEY)
 
 def generate_response(question, search_results):
     """
@@ -69,8 +80,8 @@ POLICY DOCUMENT EXCERPTS:
 YOUR ANSWER:
 """
     
-    # Check if Gemini API key is set
-    if not GEMINI_API_KEY:
+    # UPDATED: Check if Gemini API key is set using lazy initialization
+    if not ensure_genai_initialized():
         return {
             "answer": "Google Gemini API key is not configured. Please add your GEMINI_API_KEY to the .env file.",
             "sources": sources,
