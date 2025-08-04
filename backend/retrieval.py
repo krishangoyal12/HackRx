@@ -2,7 +2,6 @@ import os
 import sys
 import time
 from dotenv import load_dotenv
-from sentence_transformers import SentenceTransformer, CrossEncoder
 from qdrant_client import QdrantClient
 
 # Load environment variables from .env file
@@ -13,20 +12,33 @@ QDRANT_URL = os.getenv("QDRANT_URL")
 QDRANT_API_KEY = os.getenv("QDRANT_API_KEY")
 COLLECTION_NAME = "policy_documents"
 EMBEDDING_MODEL_NAME = "sentence-transformers/all-mpnet-base-v2"
-# A specialized model for re-ranking search results for higher accuracy.
 CROSS_ENCODER_MODEL_NAME = "cross-encoder/ms-marco-MiniLM-L-6-v2"
 
-# --- Initialize Clients and Models ---
-# This should be done once when your application starts to avoid reloading.
-print("Initializing models... This may take a moment.")
-# Model for creating vector embeddings (the 'retriever')
-embedding_model = SentenceTransformer(EMBEDDING_MODEL_NAME)
-# Model for re-scoring the retrieved results (the 're-ranker')
-cross_encoder = CrossEncoder(CROSS_ENCODER_MODEL_NAME)
-# Qdrant client
-qdrant_client = QdrantClient(url=QDRANT_URL, api_key=QDRANT_API_KEY, timeout=30)
-print("Models and client initialized successfully.")
+# Initialize clients and models only when needed
+_embedding_model = None
+_cross_encoder = None
+_qdrant_client = None
 
+# Lazy loading functions
+def get_embedding_model():
+    global _embedding_model
+    if _embedding_model is None:
+        from sentence_transformers import SentenceTransformer
+        _embedding_model = SentenceTransformer(EMBEDDING_MODEL_NAME)
+    return _embedding_model
+
+def get_cross_encoder():
+    global _cross_encoder
+    if _cross_encoder is None:
+        from sentence_transformers import CrossEncoder
+        _cross_encoder = CrossEncoder(CROSS_ENCODER_MODEL_NAME)
+    return _cross_encoder
+
+def get_qdrant_client():
+    global _qdrant_client
+    if _qdrant_client is None:
+        _qdrant_client = QdrantClient(url=QDRANT_URL, api_key=QDRANT_API_KEY, timeout=30)
+    return _qdrant_client
 
 def search_documents(question, retrieve_top_k=10, rerank_top_k=4):
     """
@@ -43,6 +55,11 @@ def search_documents(question, retrieve_top_k=10, rerank_top_k=4):
     start_time = time.time()
     
     try:
+        # Initialize models only when needed
+        embedding_model = get_embedding_model()
+        cross_encoder = get_cross_encoder()
+        qdrant_client = get_qdrant_client()
+        
         # === STAGE 1: RETRIEVAL ===
         # Generate embedding for the question using the base embedding model.
         question_embedding = embedding_model.encode(question).tolist()
