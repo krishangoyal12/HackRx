@@ -2,9 +2,9 @@ import os
 
 bind = f"0.0.0.0:{os.environ.get('PORT', '5000')}"
 workers = 1  # Keep at 1 for memory constraints
-threads = 1  # Reduce threads to save memory
-timeout = 300  # Increase timeout to 5 minutes
-preload_app = False  # Keep this to save memory
-max_requests = 1000  # Restart workers periodically
-max_requests_jitter = 100
+threads = 2  # Increased to 2 threads to handle concurrent requests
+timeout = int(os.environ.get('RENDER_TIMEOUT_SECONDS', 300))  # Use environment variable
+preload_app = True  # CHANGED to True to load models at startup
+max_requests = 10  # Lowered to restart workers more frequently
+max_requests_jitter = 3
 worker_class = "sync"  # Use sync workers for ML workloads

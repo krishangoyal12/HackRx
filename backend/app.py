@@ -7,8 +7,9 @@ import time
 from retrieval import search_documents
 from llm_handler import generate_response  # Import the new LLM handler
 import sys
+import threading
 
-print("Python version:", sys.version)
+# print("Python version:", sys.version)
 
 load_dotenv()
 
@@ -52,28 +53,38 @@ def check_qdrant():
 @app.route('/api/v1/hackrx/run', methods=['POST'])
 # @token_required  # Uncomment for production
 def hackrx_run():
+    print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] Received request to /api/v1/hackrx/run")
     data = request.get_json()
+    
+    print(f"Request data: {data}")
     
     if not data or 'question' not in data:
         return jsonify({"error": "Question is required"}), 400
     
     question = data['question']
-    top_k = data.get('top_k', 4)  # Default to 4 results for LLM context
-    use_llm = data.get('use_llm', True)  # Whether to use Gemini
-    include_raw = data.get('include_raw', False)  # New parameter to control raw results
+    top_k = data.get('top_k', 4)
+    use_llm = data.get('use_llm', True)
+    include_raw = data.get('include_raw', False)
     
     start_time = time.time()
     
     try:
         # First get raw search results
+        print(f"Starting document search for: {question}")
         search_result = search_documents(question, top_k)
+        print(f"Search complete in {time.time() - start_time:.2f}s. Found {len(search_result.get('results', []))} results")
         
         # If no results or LLM not requested, return raw results
         if not search_result.get('results') or not use_llm:
             return jsonify(search_result), 200
             
         # If LLM is requested, use Gemini to combine the results
+        print("Starting LLM response generation")
+        llm_start_time = time.time()
         llm_response = generate_response(question, search_result['results'])
+        print(f"LLM response generated in {time.time() - llm_start_time:.2f}s")
+        
+        # Rest of the function remains the same...
         
         # Create clean response (without raw results)
         response = {
@@ -96,6 +107,26 @@ def hackrx_run():
             "query": question,
             "time_taken": round(time.time() - start_time, 3)
         }), 500
+
+
+# Start a background thread to preload models
+def preload_models():
+    print("Preloading ML models...")
+    try:
+        from retrieval import get_embedding_model, get_cross_encoder, get_qdrant_client
+        from llm_handler import ensure_genai_initialized
+        
+        # Load models in background
+        get_embedding_model()
+        get_cross_encoder()
+        get_qdrant_client()
+        ensure_genai_initialized()
+        print("✓ All models preloaded successfully")
+    except Exception as e:
+        print(f"! Error preloading models: {e}")
+
+# Start preloading after app is created but before it runs
+threading.Thread(target=preload_models, daemon=True).start()
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
