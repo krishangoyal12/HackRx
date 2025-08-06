@@ -25,6 +25,30 @@ app.register_blueprint(auth, url_prefix='/auth')
 def home():
     return "✅ Chatbot Backend Running"
 
+@app.route('/api/health/qdrant')
+def check_qdrant():
+    """Health check for Qdrant connection"""
+    try:
+        from retrieval import QdrantClient, QDRANT_URL, QDRANT_API_KEY
+        
+        # Create client and test connection
+        client = QdrantClient(
+            url=QDRANT_URL,
+            api_key=QDRANT_API_KEY,
+            timeout=10  # 10 second timeout
+        )
+        collections = client.get_collections()
+        
+        return jsonify({
+            "status": "connected",
+            "collections": [c.name for c in collections.collections]
+        })
+    except Exception as e:
+        return jsonify({
+            "status": "error",
+            "message": str(e)
+        }), 500
+
 @app.route('/api/v1/hackrx/run', methods=['POST'])
 # @token_required  # Uncomment for production
 def hackrx_run():
