@@ -1,0 +1,9 @@
+Flask==3.0.3
+Flask-Cors==4.0.0
+python-dotenv==1.0.1
+sentence-transformers==2.7.0
+qdrant-client==1.15.0
+psycopg2-binary==2.9.9
+PyJWT==2.8.0
+google-generativeai>=0.3.0
+gunicorn==20.1.0
