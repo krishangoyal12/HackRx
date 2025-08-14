@@ -24,14 +24,39 @@ def get_embedding_model():
     global _embedding_model
     if _embedding_model is None:
         from sentence_transformers import SentenceTransformer
-        _embedding_model = SentenceTransformer(EMBEDDING_MODEL_NAME)
+        import torch
+        
+        # Ensure CPU inference - more stable for production and avoids CUDA errors
+        device = "cpu"
+        print(f"Loading embedding model on {device}...")
+        
+        try:
+            _embedding_model = SentenceTransformer(EMBEDDING_MODEL_NAME, device=device)
+            # Force model to correct device if needed
+            if hasattr(_embedding_model, "to"):
+                _embedding_model.to(device)
+        except Exception as e:
+            print(f"Error loading embedding model: {str(e)}")
+            raise
+            
     return _embedding_model
 
 def get_cross_encoder():
     global _cross_encoder
     if _cross_encoder is None:
         from sentence_transformers import CrossEncoder
-        _cross_encoder = CrossEncoder(CROSS_ENCODER_MODEL_NAME)
+        import torch
+        
+        # Ensure CPU inference - more stable for production
+        device = "cpu"
+        print(f"Loading cross-encoder model on {device}...")
+        
+        try:
+            _cross_encoder = CrossEncoder(CROSS_ENCODER_MODEL_NAME, device=device)
+        except Exception as e:
+            print(f"Error loading cross-encoder model: {str(e)}")
+            raise
+            
     return _cross_encoder
 
 def get_qdrant_client():
@@ -55,22 +80,61 @@ def search_documents(question, retrieve_top_k=10, rerank_top_k=4):
     start_time = time.time()
     
     try:
+        print(f"Starting search for query: '{question}'")
+        
         # Initialize models only when needed
-        embedding_model = get_embedding_model()
-        cross_encoder = get_cross_encoder()
-        qdrant_client = get_qdrant_client()
+        print("Loading models...")
+        try:
+            embedding_model = get_embedding_model()
+            cross_encoder = get_cross_encoder()
+            qdrant_client = get_qdrant_client()
+            print("Models loaded successfully")
+        except Exception as e:
+            print(f"Error loading models: {str(e)}")
+            return {
+                "query": question, 
+                "results": [], 
+                "total_results": 0,
+                "error": f"Model loading error: {str(e)}",
+                "time_taken": round(time.time() - start_time, 3)
+            }
         
         # === STAGE 1: RETRIEVAL ===
         # Generate embedding for the question using the base embedding model.
-        question_embedding = embedding_model.encode(question).tolist()
+        print("Generating embedding...")
+        try:
+            question_embedding = embedding_model.encode(question, convert_to_tensor=False)
+            if not isinstance(question_embedding, list):
+                question_embedding = question_embedding.tolist()
+        except Exception as e:
+            print(f"Error generating embedding: {str(e)}")
+            return {
+                "query": question, 
+                "results": [], 
+                "total_results": 0,
+                "error": f"Embedding generation error: {str(e)}",
+                "time_taken": round(time.time() - start_time, 3)
+            }
         
         # Retrieve a larger set of initial candidates from Qdrant.
-        initial_results = qdrant_client.search(
-            collection_name=COLLECTION_NAME,
-            query_vector=question_embedding,
-            limit=retrieve_top_k,
-            with_payload=True
-        )
+        print("Querying Qdrant...")
+        try:
+            initial_results = qdrant_client.search(
+                collection_name=COLLECTION_NAME,
+                query_vector=question_embedding,
+                limit=retrieve_top_k,
+                with_payload=True
+            )
+            print(f"Found {len(initial_results)} initial results from Qdrant")
+        except Exception as e:
+            print(f"Error querying Qdrant: {str(e)}")
+            return {
+                "query": question, 
+                "results": [], 
+                "total_results": 0,
+                "error": f"Qdrant query error: {str(e)}",
+                "time_taken": round(time.time() - start_time, 3)
+            }
         
         if not initial_results:
             return {
@@ -79,11 +143,38 @@ def search_documents(question, retrieve_top_k=10, rerank_top_k=4):
             }
 
         # === STAGE 2: RE-RANKING ===
-        # Prepare pairs of [question, document_text] for the cross-encoder.
-        cross_inp = [[question, result.payload.get("text", "")] for result in initial_results]
-        
-        # Predict more accurate relevance scores for these pairs.
-        cross_scores = cross_encoder.predict(cross_inp)
+        print("Starting re-ranking...")
+        try:
+            # Prepare pairs of [question, document_text] for the cross-encoder.
+            cross_inp = [[question, result.payload.get("text", "")] for result in initial_results]
+            
+            # Predict more accurate relevance scores for these pairs.
+            cross_scores = cross_encoder.predict(cross_inp)
+            print("Re-ranking completed successfully")
+        except Exception as e:
+            print(f"Error during re-ranking: {str(e)}")
+            # If re-ranking fails, we can still return initial results without re-ranking
+            print("Falling back to initial results without re-ranking")
+            
+            # Format the initial results
+            final_results = []
+            for idx, result in enumerate(initial_results[:min(rerank_top_k, len(initial_results))]):
+                result_item = {
+                    "id": idx + 1,
+                    "text": result.payload.get("text", "No content available"),
+                    "source": result.payload.get("source", "Unknown source"),
+                    "page": result.payload.get("page", "Unknown page"),
+                    "original_similarity": round(result.score, 4),
+                }
+                final_results.append(result_item)
+            
+            return {
+                "query": question,
+                "results": final_results,
+                "total_results": len(final_results),
+                "error": f"Re-ranking error (using fallback results): {str(e)}",
+                "time_taken": round(time.time() - start_time, 3)
+            }
         
         # Create a list of tuples with (result, rerank_score) instead of modifying ScoredPoint objects
         reranked_results = []
@@ -125,7 +216,7 @@ def search_documents(question, retrieve_top_k=10, rerank_top_k=4):
         }
 
 # --- Example Usage ---
-if __name__ == '__main__':
+if _name_ == '_main_':
     test_question = "What is the waiting period for knee surgery with a 3 month old policy?"
     search_result = search_documents(test_question)
     

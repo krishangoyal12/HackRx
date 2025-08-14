@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 from functools import wraps
 
 load_dotenv()
-auth = Blueprint('auth', _name_)
+auth = Blueprint('auth', __name__)
 
 # Simple in-memory token blacklist
 # In production, use Redis or database storage for blacklisted tokens
