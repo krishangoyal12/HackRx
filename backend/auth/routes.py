@@ -10,29 +10,6 @@ from functools import wraps
 load_dotenv()
 auth = Blueprint('auth', _name_)
 
-# Simple in-memory token blacklist
-# In production, use Redis or database storage for blacklisted tokens
-token_blacklist = set()
-
-def cleanup_expired_tokens():
-    """Remove expired tokens from blacklist to prevent memory leaks"""
-    current_time = datetime.datetime.utcnow()
-    tokens_to_remove = set()
-    
-    for token in token_blacklist:
-        try:
-            # Try to decode - if it raises ExpiredSignatureError, it's expired and can be removed
-            jwt.decode(token, JWT_SECRET, algorithms=["HS256"])
-        except jwt.ExpiredSignatureError:
-            tokens_to_remove.add(token)
-        except Exception:
-            # Keep other tokens in the blacklist
-            pass
-            
-    # Remove expired tokens
-    token_blacklist.difference_update(tokens_to_remove)
-    return len(tokens_to_remove)
-
 JWT_SECRET = os.getenv("JWT_SECRET")
 JWT_EXPIRES = int(os.getenv("JWT_EXPIRES", 3600))  # default 1 hour
 
@@ -70,10 +47,6 @@ def token_required(f):
 
         if not token:
             return jsonify({"error": "Token is missing!"}), 401
-        
-        # Check if token is blacklisted (logged out)
-        if token in token_blacklist:
-            return jsonify({"error": "Token has been revoked. Please login again."}), 401
 
         try:
             data = jwt.decode(token, JWT_SECRET, algorithms=["HS256"])
@@ -197,34 +170,15 @@ def get_users():
 @auth.route('/logout', methods=['POST'])
 @token_required
 def logout():
-    # Get token from Authorization header
-    auth_header = request.headers.get('Authorization')
-    if auth_header and auth_header.startswith('Bearer '):
-        token = auth_header.split(' ')[1]
-        
-        # Add to blacklist
-        token_blacklist.add(token)
-        
-        # Periodically clean up expired tokens (every ~20 requests)
-        if len(token_blacklist) % 20 == 0:
-            removed = cleanup_expired_tokens()
-            print(f"Cleaned up {removed} expired tokens from blacklist")
-        
-        return jsonify({"message": "Successfully logged out"}), 200
+    """
+    Logout endpoint - client should delete the token after calling this
     
-    return jsonify({"error": "Invalid token format"}), 400
-
-
-@auth.route('/status', methods=['GET'])
-@token_required
-def check_status():
-    # If token_required decorator passed, the user is authenticated
+    Note: Since JWT is stateless, the token will still be valid until it expires.
+    For a complete logout solution in production, consider:
+    1. Short token expiration times
+    2. Implementing a token blacklist/revocation database
+    """
     return jsonify({
-        "authenticated": True,
-        "user": {
-            "id": request.user["id"],
-            "username": request.user["username"],
-            "email": request.user["email"],
-            "expires": request.user["exp"]
-        }
+        "message": "Successfully logged out",
+        "info": "Please remove the token from client storage"
     }), 200
