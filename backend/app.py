@@ -31,7 +31,7 @@ except ImportError as e:
 
 load_dotenv()
 
-app = Flask(_name_)
+app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY")
 
 # Enable CORS for all routes
@@ -251,7 +251,7 @@ def preload_models():
 # Start preloading after app is created but before it runs
 threading.Thread(target=preload_models, daemon=True).start()
 
-if _name_ == '_main_':
+if __name__ == '_main_':
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port)
 

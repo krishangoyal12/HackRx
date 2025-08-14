@@ -216,7 +216,7 @@ def search_documents(question, retrieve_top_k=10, rerank_top_k=4):
         }
 
 # --- Example Usage ---
-if _name_ == '_main_':
+if __name__ == '_main_':
     test_question = "What is the waiting period for knee surgery with a 3 month old policy?"
     search_result = search_documents(test_question)
     
