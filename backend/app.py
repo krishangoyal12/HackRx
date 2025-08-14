@@ -4,16 +4,34 @@ from flask_cors import CORS
 from auth.routes import auth, get_db_connection, token_required
 import os
 import time
-from retrieval import search_documents
-from llm_handler import generate_response  # Import the new LLM handler
 import sys
 import threading
+
+# Print Python version for debugging
+print(f"Python version: {sys.version}")
+
+# Import the dependencies safely with error handling
+try:
+    from retrieval import search_documents
+    print("✓ Successfully imported retrieval module")
+except ImportError as e:
+    print(f"! Error importing retrieval module: {e}")
+    def search_documents(*args, **kwargs):
+        return {"error": f"Retrieval module not available: {str(e)}", "results": []}
+        
+try:
+    from llm_handler import generate_response
+    print("✓ Successfully imported LLM handler")
+except ImportError as e:
+    print(f"! Error importing LLM handler: {e}")
+    def generate_response(*args, **kwargs):
+        return {"answer": "LLM module not available", "sources": [], "provider": "none"}
 
 # print("Python version:", sys.version)
 
 load_dotenv()
 
-app = Flask(__name__)
+app = Flask(_name_)
 app.secret_key = os.getenv("SECRET_KEY")
 
 # Enable CORS for all routes
@@ -86,18 +104,38 @@ def hackrx_run():
         
         # Rest of the function remains the same...
         
-        # Create clean response (without raw results)
+        # Clean and format the answer text
+        clean_answer = llm_response["answer"]
+        # Replace newlines with spaces
+        clean_answer = clean_answer.replace('\n', ' ')
+        # Replace multiple spaces with a single space
+        import re
+        clean_answer = re.sub(r'\s+', ' ', clean_answer)
+        # Remove markdown asterisks for bold formatting
+        clean_answer = clean_answer.replace('', '')
+        # Remove markdown bullets
+        clean_answer = clean_answer.replace('* ', '')
+        
+        # Create clean response (without raw results or sources)
         response = {
             "query": question,
-            "answer": llm_response["answer"],
-            "sources": llm_response["sources"],
-            "llm_provider": llm_response["provider"],
+            "answer": clean_answer.strip(),
             "time_taken": round(time.time() - start_time, 3)
         }
+        
+        # Add provider info optionally
+        include_provider = data.get('include_provider', False)
+        if include_provider:
+            response["llm_provider"] = llm_response["provider"]
         
         # Only add raw results if explicitly requested
         if include_raw:
             response["raw_results"] = search_result['results']
+            
+        # Only include sources if explicitly requested
+        include_sources = data.get('include_sources', False)
+        if include_sources:
+            response["sources"] = llm_response["sources"]
         
         return jsonify(response), 200
         
@@ -109,26 +147,111 @@ def hackrx_run():
         }), 500
 
 
+@app.route('/api/v1/hackrx/answer', methods=['POST'])
+# @token_required  # Uncomment for production
+def simple_answer():
+    """Simplified endpoint that returns just the answer with minimal formatting"""
+    data = request.get_json()
+    
+    if not data or 'question' not in data:
+        return jsonify({"error": "Question is required"}), 400
+    
+    question = data['question']
+    top_k = data.get('top_k', 4)
+    
+    start_time = time.time()
+    
+    try:
+        # Get search results
+        search_result = search_documents(question, top_k)
+        
+        # If no results, return simple message
+        if not search_result.get('results'):
+            return jsonify({
+                "answer": "I couldn't find any relevant information to answer your question."
+            }), 200
+            
+        # Generate response using LLM
+        llm_response = generate_response(question, search_result['results'])
+        
+        # Clean and format answer text
+        clean_answer = llm_response["answer"]
+        # Replace newlines with spaces
+        clean_answer = clean_answer.replace('\n', ' ')
+        # Replace multiple spaces with a single space
+        import re
+        clean_answer = re.sub(r'\s+', ' ', clean_answer)
+        # Remove markdown asterisks for bold formatting
+        clean_answer = clean_answer.replace('', '')
+        # Remove markdown bullets
+        clean_answer = clean_answer.replace('* ', '')
+        
+        # Return just the answer in a clean format
+        return jsonify({
+            "answer": clean_answer.strip()
+        }), 200
+        
+    except Exception as e:
+        return jsonify({
+            "error": str(e)
+        }), 500
+
+
 # Start a background thread to preload models
 def preload_models():
     print("Preloading ML models...")
     try:
+        print("Importing modules...")
         from retrieval import get_embedding_model, get_cross_encoder, get_qdrant_client
-        from llm_handler import ensure_genai_initialized
+        # Import llm_handler conditionally as it might not be needed immediately
+        try:
+            from llm_handler import ensure_genai_initialized
+        except ImportError:
+            print("Note: llm_handler not available - skipping Gemini initialization")
+            ensure_genai_initialized = None
         
-        # Load models in background
-        get_embedding_model()
-        get_cross_encoder()
-        get_qdrant_client()
-        ensure_genai_initialized()
-        print("✓ All models preloaded successfully")
+        # Load models in background with proper error handling
+        print("Loading embedding model...")
+        try:
+            get_embedding_model()
+            print("✓ Embedding model loaded successfully")
+        except Exception as e:
+            print(f"! Error loading embedding model: {e}")
+            print("  Will retry on first request")
+            
+        print("Loading cross-encoder model...")
+        try:
+            get_cross_encoder()
+            print("✓ Cross-encoder model loaded successfully")
+        except Exception as e:
+            print(f"! Error loading cross-encoder model: {e}")
+            print("  Will retry on first request")
+            
+        print("Loading Qdrant client...")
+        try:
+            get_qdrant_client()
+            print("✓ Qdrant client initialized successfully")
+        except Exception as e:
+            print(f"! Error initializing Qdrant client: {e}")
+            
+        # Only try to load Gemini if available
+        if ensure_genai_initialized:
+            print("Initializing LLM...")
+            try:
+                ensure_genai_initialized()
+                print("✓ LLM initialized successfully")
+            except Exception as e:
+                print(f"! Error initializing LLM: {e}")
+                print("  Will retry when needed")
+                
+        print("✓ Model preloading completed")
     except Exception as e:
-        print(f"! Error preloading models: {e}")
+        print(f"! Error in preload process: {e}")
 
 # Start preloading after app is created but before it runs
 threading.Thread(target=preload_models, daemon=True).start()
 
-if __name__ == '__main__':
+if _name_ == '_main_':
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port)
 
@@ -139,4 +262,3 @@ if __name__ == '__main__':
     # print(cur.fetchone())
     # cur.close()
     # conn.close()
-
